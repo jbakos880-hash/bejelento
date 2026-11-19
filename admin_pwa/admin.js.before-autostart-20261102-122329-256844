@@ -1,0 +1,37 @@
+(()=>{'use strict';
+const panel=document.getElementById('panel'),box=document.getElementById('admin-notification-controls'),msg=document.getElementById('admin-notification-status'),enable=document.getElementById('admin-notification-enable'),disable=document.getElementById('admin-notification-disable'),test=document.getElementById('admin-notification-test'),install=document.getElementById('admin-install');
+let enabled=false,cursor=0,epoch=0,timer=null,pending=false,reg=null,promptEvent=null,starting=false;
+const supported=window.isSecureContext&&'serviceWorker' in navigator&&'Notification' in window;
+const registration=supported?navigator.serviceWorker.register('/admin/sw.js',{scope:'/admin/',updateViaCache:'none'}).then(async r=>{if(r.active)return r;await new Promise((resolve,reject)=>{const w=r.installing||r.waiting;if(!w)return reject(Error('Nem indult a service worker.'));if(w.state==='activated')return resolve();w.addEventListener('statechange',()=>{if(w.state==='activated')resolve();if(w.state==='redundant')reject(Error('A service worker nem aktiválódott.'))})});return r}):Promise.resolve(null);
+registration.then(r=>reg=r).catch(()=>{msg.textContent='Az értesítési szolgáltatás nem indult el. Frissítse az oldalt.'});
+function loggedIn(){return !!user&&!panel.hidden}
+function buttons(){box.hidden=!loggedIn();enable.disabled=!supported||enabled||starting;disable.disabled=!enabled;test.disabled=!supported||starting}
+async function clearNotifications(){if(!reg)return;for(const n of await reg.getNotifications())if(n.tag==='polgardi-admin-new'||n.tag==='polgardi-admin-test')n.close()}
+function stop(message){epoch++;enabled=false;cursor=0;clearTimeout(timer);timer=null;buttons();if(message)msg.textContent=message;clearNotifications().catch(()=>{})}
+function valid(e,g,id){return enabled&&e===epoch&&g===generation&&loggedIn()&&user.id===id}
+function schedule(){clearTimeout(timer);if(enabled)timer=setTimeout(poll,15000)}
+async function poll(){if(!enabled||pending)return;pending=true;const e=epoch,g=generation,id=user&&user.id;try{if(!valid(e,g,id)){stop('Az értesítésfigyelés leállt.');return}if(Notification.permission!=='granted'){stop('Az értesítési engedély megszűnt.');return}const d=await api('/api/admin-notifications?after='+cursor);if(!valid(e,g,id))return;if(d.latest<cursor){cursor=d.latest;msg.textContent='Az adatforrás megváltozott; a figyelés új alapállapotról folytatódik.';return}if(d.count>0){await reg.showNotification('Polgárdi Admin',{body:d.count===1?'Új lakossági bejelentés érkezett.':d.count+' új lakossági bejelentés érkezett.',icon:'/admin/pwa/icon-192.png',tag:'polgardi-admin-new'});if(!valid(e,g,id)){await clearNotifications();return}msg.textContent=d.count+' új bejelentés érkezett. A megtekintéshez kattintson a Frissítés gombra.'}else msg.textContent='Figyelés aktív. Utolsó sikeres ellenőrzés: '+new Date().toLocaleTimeString('hu-HU');cursor=d.latest}catch(err){if(err instanceof SessionEnded){stop('A munkamenet véget ért.');return}if(valid(e,g,id))msg.textContent='Az ellenőrzés vagy értesítés nem sikerült. Automatikusan újrapróbáljuk.'}finally{pending=false;schedule()}}
+async function permission(){if(Notification.permission==='default')return await Notification.requestPermission();return Notification.permission}
+enable.onclick=async()=>{if(!loggedIn()||starting)return;starting=true;buttons();const g=generation,id=user.id,e=++epoch;try{if(await permission()!=='granted')throw Error('Az értesítések nincsenek engedélyezve. Ellenőrizze a böngésző webhelyengedélyeit.');reg=await registration;if(!reg)throw Error('Az értesítések itt nem támogatottak.');const d=await api('/api/admin-notifications');if(e!==epoch||g!==generation||!loggedIn()||user.id!==id)return;cursor=d.latest;enabled=true;msg.textContent='Figyelés bekapcsolva. A mostantól érkező bejelentésekről értesítünk; a korábbiakról nem.';schedule()}catch(err){if(!(err instanceof SessionEnded))msg.textContent=err.message}finally{starting=false;buttons()}};
+disable.onclick=()=>stop('Az értesítésfigyelés kikapcsolva.');
+test.onclick=async()=>{if(!loggedIn()||starting)return;starting=true;buttons();const g=generation,id=user.id;try{if(await permission()!=='granted')throw Error('Először engedélyezze az értesítéseket.');reg=await registration;await api('/api/me');if(g!==generation||!loggedIn()||user.id!==id)return;await reg.showNotification('Polgárdi Admin – teszt',{body:'Ez tesztértesítés, nem új bejelentés.',icon:'/admin/pwa/icon-192.png',tag:'polgardi-admin-test'});if(g!==generation||!loggedIn())await clearNotifications();else msg.textContent='Tesztértesítés elküldve. Ha nem látszik, ellenőrizze a rendszer értesítési beállításait és a Ne zavarjanak módot.'}catch(err){if(!(err instanceof SessionEnded))msg.textContent=err.message}finally{starting=false;buttons()}};
+new MutationObserver(()=>{if(!loggedIn())stop('Kijelentkezve: az értesítésfigyelés nem aktív.');buttons()}).observe(panel,{attributes:true,attributeFilter:['hidden']});
+for(const id of ['logout'])document.getElementById(id).addEventListener('click',()=>stop('Az értesítésfigyelés leállítva.'));
+document.getElementById('pw').addEventListener('submit',()=>stop('Az értesítésfigyelés leállítva.'));
+window.addEventListener('focus',()=>{if(enabled&&!pending){clearTimeout(timer);poll()}});
+navigator.serviceWorker?.addEventListener('message',async e=>{
+if(e.data?.type!=='ADMIN_NOTIFICATION_CLICK'||!loggedIn())return;
+const pending=[...document.querySelectorAll('#reports .local')].some(p=>/Még nincs elmentve|Mentés folyamatban|mentés sikere nem igazolható/i.test(p.textContent));
+const filled=[...panel.querySelectorAll('input,textarea')].some(x=>x.value.trim()!=='');
+if((pending||filled)&&!window.confirm('Nem mentett módosítás, folyamatban lévő mentés vagy kitöltött adminűrlap lehet az oldalon. A frissítés felülírhatja ezeket. Frissíti a listát?')){msg.textContent='Az automatikus frissítést megszakította. Mentse a módosításokat, majd kattintson a Frissítés gombra.';return;}
+if(loading){msg.textContent='A lista betöltése már folyamatban van. Ha az új bejelentés nem jelenik meg, kattintson a Frissítés gombra.';return;}
+const button=document.getElementById('refresh');button.disabled=true;
+try{await load();if(loggedIn())msg.textContent='A bejelentéslista az értesítésre kattintás után frissült.';}
+catch(err){if(!(err instanceof SessionEnded))msg.textContent='A lista frissítése nem sikerült: '+(err.message||'Kapcsolati hiba.');}
+finally{button.disabled=false;}
+});
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();promptEvent=e;install.hidden=false});
+install.onclick=async()=>{if(!promptEvent)return;const p=promptEvent;promptEvent=null;install.hidden=true;await p.prompt();await p.userChoice};window.addEventListener('appinstalled',()=>install.hidden=true);
+if(!supported)msg.textContent='Ebben a böngészőben vagy környezetben az értesítés nem támogatott.';else msg.textContent='Az értesítésfigyelés kikapcsolva. Minden új megnyitás után kapcsolja be.';
+buttons();
+})();
