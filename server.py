@@ -195,6 +195,9 @@ install_public(app, db, protected, error, ROOT)
 from admin_filter_support import install as install_admin_filters
 install_admin_filters(app, ROOT)
 
+from push_support import install as install_push
+install_push(app, db, current, error)
+
 if __name__=='__main__':
     print('Helyi felulet: http://localhost:8000 | Admin: http://localhost:8000/admin')
     app.run(host='0.0.0.0',port=int(os.environ.get('PORT','8000')),debug=False)
