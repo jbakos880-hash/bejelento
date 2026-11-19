@@ -1,0 +1,30 @@
+from flask import request,jsonify,send_from_directory
+from public_core import prepare,metadata,publish,public_rows,Conflict
+
+def install(app,db,protected,error,ROOT):
+    prepare(db)
+    @app.get('/public-reports.js')
+    def public_script():return send_from_directory(ROOT,'public-reports.js')
+    @app.get('/publication-admin.js')
+    def publication_script():return send_from_directory(ROOT,'publication-admin.js')
+    @app.get('/api/public-reports')
+    def public_reports():
+        raw=request.args.get('before')
+        if raw is not None and (not raw.isascii() or not raw.isdigit() or len(raw)>19):return error('Hibás lapozási azonosító.')
+        try:return jsonify(public_rows(db,request.args.get('category',''),request.args.get('status',''),int(raw) if raw is not None else None))
+        except ValueError as exc:return error(str(exc))
+    @app.get('/api/publication/<int:rid>')
+    @protected()
+    def publication_read(u):
+        if not 0<rid<2**63:return error('Hibás azonosító.')
+        result=metadata(db,rid)
+        return jsonify(result) if result else error('Nem található.',404)
+    @app.post('/api/publication')
+    @protected()
+    def publication_write(u):
+        d=request.get_json();rid=d.get('id')
+        if type(rid) is not int or not 0<rid<2**63:return error('Hibás azonosító.')
+        try:result=publish(db,u['id'],rid,d.get('version'),d.get('action'),d.get('summary',''),d.get('location',''))
+        except Conflict as exc:return error(str(exc),409)
+        except ValueError as exc:return error(str(exc))
+        return jsonify(result) if result else error('Nem található.',404)

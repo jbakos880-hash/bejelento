@@ -1,0 +1,25 @@
+RAILWAY ATALLASI CSOMAG – NEM TELJES ALKALMAZAS
+
+A ZIP tartalmát a meglévő, teljes feltöltési mappába kell másolni, a megfelelő fájlokat felülírva. Előtte készítsen másolatot. Az eredeti adatbázist ne törölje.
+
+A csomag nem tartalmazza a teljes alkalmazást, a PWA képeket, az admin service workert vagy más hiányzó fájlokat. A meglévő mappákat tartsa meg. A Railway telepítés jelenleg nincs végrehajtva.
+
+Railway:
+1. A teljes alkalmazáskódot töltse fel a privát repositoryba, .env, adatbázis és lakossági fotók nélkül.
+2. GitHub repositoryból telepítsen Railway szolgáltatást.
+3. Hozzon létre Volume-ot /data csatolási ponttal. Egyetlen példányt használjon.
+4. Variables: DATA_DIR=/data; PUBLIC_ORIGIN=https://a-tenyleges-domain (útvonal és záró / nélkül); SECRET_KEY legalább 32 karakteres, véletlen, állandó titok; ADMIN_EMAIL és legalább 12 karakteres ADMIN_PASSWORD; PUBLIC_SUBMISSIONS_ENABLED=false.
+5. A railway.json egy Gunicorn workert indít négy szállal. HTTPS szükséges. A kód nem használ megbízhatatlan továbbított fejléceket.
+6. Ha régi adatokat kíván megtartani: az alkalmazás leállított állapotában a teljes meglévő data mappát mentse, majd ellenőrzötten másolja a Volume-ba (adatbázis és photos együtt). Az ADMIN_PASSWORD csak üres felhasználói táblánál hoz létre első admint; meglévő jelszót nem ír át.
+
+NYITOTT ELESITESI FELTETELEK:
+- Az adatkezelési oldal tervezet; előző üzenetben kapott hiányos szöveg helyett ez jelzi a hiányokat. Végleges önkormányzati/DPO jóváhagyás és kitöltés kell.
+- Ellenőrzött tárhely- és adatfeldolgozói szerződés, régió és esetleges adattovábbítás.
+- Beállított, ellenőrzött biztonsági mentés és visszaállítás, megőrzés és törlés. A Volume nem biztonsági mentés.
+- Publikus beküldés terhelés- és visszaélésvédelme, fájlfeltöltés és hozzáférés független ellenőrzése. A jelen csomag nem teljes biztonsági audit.
+- Minden eredeti modul és hivatkozott statikus fájl legyen meg. A rendelkezésre álló feltöltések közt nem szerepel minden hivatkozott fájl.
+- Funkcionális ellenőrzés: bejelentés, kép, koordináta, adminjogosultságok, közzététel, törlés és újratelepítés utáni adatmegmaradás.
+
+Csak ezek lezárása és a végleges adatkezelési oldal cseréje után állítsa PUBLIC_SUBMISSIONS_ENABLED=true értékre. A kapcsoló önmagában nem igazolja a jogi vagy műszaki megfelelést.
+
+Ellenőrzés: a csomag Python-fájljain statikus szintaktikai ellenőrzés futott. Railwayen és teljes alkalmazásként nem lett tesztelve.

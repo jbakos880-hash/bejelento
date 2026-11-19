@@ -1,0 +1,25 @@
+TÉRKÉPES HELYMEGJELÖLÉS – HELYI FRISSÍTÉS
+
+Előfeltétel: a működő többadminos, fényképes változat az eddigi javításokkal. A teljes projekt és data mentése után állítsa le a szervert Ctrl+C-vel.
+
+1. Másolja a ZIP fájljait a server.py mellé.
+2. PowerShell a projekt mappájában:
+py apply_map_update.py
+3. Ha sikert jelez:
+py server.py
+4. A lakossági és adminoldalon Ctrl+F5. Új Python-csomag nem szükséges.
+
+A frissítő ellenőrzi a várt kódrészleteket és menti az öt módosított kódfájlt. A szerver induláskor latitude és longitude oszlopot ad az adatbázishoz, a korábbi bejelentések helyét üresen hagyja. Az eredeti bejelentések és képek megmaradnak.
+
+HASZNÁLAT
+Az új bejelentésnél kattintson a térképre, vagy használja a saját helyzet gombot. A cím továbbra is kézzel megadandó, nem töltődik ki automatikusan. A GPS-helyzet a készülék helye, nem feltétlenül a probléma helye. A térképes pont ebben a változatban opcionális; mindkét koordinátát adja meg vagy törölje mindkettőt.
+Admin Frissítés után a koordináták és egy térképre mutató hivatkozás jelenik meg. Az adminnál nincs beágyazott térkép. A hivatkozás külön lapon az OpenStreetMap oldalt nyitja meg. A nyilvános felület nem kérheti le az admin helyszínvégpontját.
+
+TESZT
+Új kitalált bejelentésnél válasszon pontot, ellenőrizze a koordinátákat, adjon meg címet és leírást, opcionálisan képet. Mentés után az adminban ellenőrizze ugyanazt a pontot a hivatkozással. Próbálja ki kép nélkül és helymegjelölés nélkül is. Újraindítás után is ellenőrizze.
+
+KÜLSŐ SZOLGÁLTATÁSOK
+Leaflet 1.9.4 az unpkg.com CDN-ről, térképcsempék a tile.openstreetmap.org címről. Internet szükséges. Ezek a szolgáltatók technikai kapcsolatadatokat kapnak, a térképcsempékből a megtekintett terület is megállapítható. A saját helyzetet csak gombnyomásra kéri. Nem használ fordított geokódolást, automatikus címkeresést, offline csempeletöltést vagy előtöltést. A térképen a forrásmegjelölést meg kell tartani. Élesítés előtt a szolgáltatói felhasználási feltételeket, adatkezelést, rendelkezésre állást és terhelést felül kell vizsgálni, célszerű kezelhető szolgáltatói konfigurációt kialakítani. Közigazgatási határellenőrzés nincs. A helyi bemutató nem kész PWA.
+
+KORLÁT
+Nincs automatizált teljes böngészős teszt; tesztelje a frissítést másolaton, kitalált adatokkal. A forráskód és az adatbázis biztonsági másolatát őrizze meg.
