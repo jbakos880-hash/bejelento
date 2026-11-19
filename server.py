@@ -9,11 +9,25 @@ DATA_DIR=Path(os.environ.get('DATA_DIR', str(ROOT/'data'))).resolve()
 DATA_DIR.mkdir(parents=True,exist_ok=True)
 DB=DATA_DIR/'reports.sqlite3'
 app=Flask(__name__,static_folder=None)
-PUBLIC_ORIGIN=os.environ.get('PUBLIC_ORIGIN','http://localhost:8000').rstrip('/')
 from urllib.parse import urlsplit
-origin_parts=urlsplit(PUBLIC_ORIGIN)
-if origin_parts.scheme not in ('http','https') or not origin_parts.netloc or origin_parts.path:
-    raise RuntimeError('PUBLIC_ORIGIN: teljes eredet szükséges, útvonal nélkül.')
+
+PUBLIC_ORIGIN = os.environ.get(
+    'PUBLIC_ORIGIN', 'http://localhost:8000'
+).strip().rstrip('/')
+
+origin_parts = urlsplit(PUBLIC_ORIGIN)
+
+if (
+    origin_parts.scheme not in ('http', 'https')
+    or not origin_parts.netloc
+    or origin_parts.path
+):
+    raise RuntimeError(
+        f'Hibás PUBLIC_ORIGIN: {PUBLIC_ORIGIN!r}; '
+        f'scheme={origin_parts.scheme!r}, '
+        f'netloc={origin_parts.netloc!r}, '
+        f'path={origin_parts.path!r}'
+    )
 PRODUCTION=origin_parts.scheme=='https'
 app.secret_key=os.environ.get('SECRET_KEY') or (None if PRODUCTION else secrets.token_hex(32))
 if not app.secret_key or len(app.secret_key)<32:
