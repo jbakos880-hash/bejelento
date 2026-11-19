@@ -1,5 +1,6 @@
-const CACHE='polgardi-admin-offline-v1';
-self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.add('/admin/pwa/offline.html'))));
+const CACHE='polgardi-admin-offline-v2';
+self.addEventListener('install',e=>e.waitUntil((async()=>{await caches.open(CACHE).then(c=>c.add('/admin/pwa/offline.html'));await self.skipWaiting()})()));
 self.addEventListener('activate',e=>e.waitUntil((async()=>{for(const k of await caches.keys())if(k.startsWith('polgardi-admin-offline-')&&k!==CACHE)await caches.delete(k);await self.clients.claim()})()));
 self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(u.origin===self.location.origin&&e.request.method==='GET'&&e.request.mode==='navigate'&&u.pathname.startsWith('/admin/'))e.respondWith(fetch(e.request).catch(()=>caches.match('/admin/pwa/offline.html')))});
+self.addEventListener('push',e=>{e.waitUntil((async()=>{let d={};try{d=e.data?e.data.json():{}}catch{}await self.registration.showNotification('Polgárdi Admin',{body:typeof d.body==='string'?d.body:'Új értesítés érkezett. Nyissa meg az admint.',icon:'/admin/pwa/icon-192.png',tag:typeof d.tag==='string'?d.tag:'polgardi-push',data:{url:'/admin/'}})})())});
 self.addEventListener('notificationclick',e=>{e.notification.close();e.waitUntil((async()=>{const tabs=await self.clients.matchAll({type:'window',includeUncontrolled:true});const tab=tabs.find(c=>new URL(c.url).origin===self.location.origin&&new URL(c.url).pathname.startsWith('/admin/'));if(tab){await tab.focus();tab.postMessage({type:'ADMIN_NOTIFICATION_CLICK'})}else await self.clients.openWindow('/admin/')})())});

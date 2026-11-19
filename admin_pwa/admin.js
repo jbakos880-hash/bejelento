@@ -1,47 +1,60 @@
 (()=>{'use strict';
-const panel=document.getElementById('panel'),box=document.getElementById('admin-notification-controls'),msg=document.getElementById('admin-notification-status'),enable=document.getElementById('admin-notification-enable'),disable=document.getElementById('admin-notification-disable'),test=document.getElementById('admin-notification-test'),install=document.getElementById('admin-install');
-let enabled=false,cursor=0,epoch=0,timer=null,pending=false,reg=null,promptEvent=null,starting=false;
-let autoRetry=null,suspended=false;
-function preferenceKey(){return user?'polgardi-admin-notifications-v1:'+user.id:null}
-function automaticWanted(){const key=preferenceKey();if(!key)return false;try{return localStorage.getItem(key)!=='off'}catch{return true}}
-function remember(value){const key=preferenceKey();if(!key)return true;try{localStorage.setItem(key,value);return true}catch{return false}}
-function cancelAutoRetry(){clearTimeout(autoRetry);autoRetry=null}
-function maybeAutoStart(){cancelAutoRetry();if(!loggedIn()||suspended||enabled||starting||!supported)return;if(!automaticWanted()){msg.textContent='Az értesítésfigyelés ennél az adminnál ebben a böngészőben kikapcsolva. A bekapcsolás gombbal újra engedélyezheti.';return}if(Notification.permission!=='granted'){msg.textContent=Notification.permission==='denied'?'A böngésző tiltja az értesítéseket. Módosítsa a webhely értesítési engedélyét.':'Az első használathoz kattintson az Értesítések bekapcsolása gombra. Engedélyezés után automatikusan indul.';return}startMonitoring(false)}
-const supported=window.isSecureContext&&'serviceWorker' in navigator&&'Notification' in window;
-const registration=supported?navigator.serviceWorker.register('/admin/sw.js',{scope:'/admin/',updateViaCache:'none'}).then(async r=>{if(r.active)return r;await new Promise((resolve,reject)=>{const w=r.installing||r.waiting;if(!w)return reject(Error('Nem indult a service worker.'));if(w.state==='activated')return resolve();w.addEventListener('statechange',()=>{if(w.state==='activated')resolve();if(w.state==='redundant')reject(Error('A service worker nem aktiválódott.'))})});return r}):Promise.resolve(null);
-registration.then(r=>reg=r).catch(()=>{msg.textContent='Az értesítési szolgáltatás nem indult el. Frissítse az oldalt.'});
-function loggedIn(){return !!user&&!panel.hidden}
-function buttons(){box.hidden=!loggedIn();enable.disabled=!supported||enabled||starting;disable.disabled=!enabled;test.disabled=!supported||starting}
-async function clearNotifications(){if(!reg)return;for(const n of await reg.getNotifications())if(n.tag==='polgardi-admin-new'||n.tag==='polgardi-admin-test')n.close()}
-function stop(message){cancelAutoRetry();epoch++;enabled=false;cursor=0;clearTimeout(timer);timer=null;buttons();if(message)msg.textContent=message;clearNotifications().catch(()=>{})}
-function valid(e,g,id){return enabled&&e===epoch&&g===generation&&loggedIn()&&user.id===id}
-function schedule(){clearTimeout(timer);if(enabled)timer=setTimeout(poll,15000)}
-async function poll(){if(!enabled||pending)return;pending=true;const e=epoch,g=generation,id=user&&user.id;try{if(!valid(e,g,id)){stop('Az értesítésfigyelés leállt.');return}if(Notification.permission!=='granted'){stop('Az értesítési engedély megszűnt.');return}const d=await api('/api/admin-notifications?after='+cursor);if(!valid(e,g,id))return;if(d.latest<cursor){cursor=d.latest;msg.textContent='Az adatforrás megváltozott; a figyelés új alapállapotról folytatódik.';return}if(d.count>0){await reg.showNotification('Polgárdi Admin',{body:d.count===1?'Új lakossági bejelentés érkezett.':d.count+' új lakossági bejelentés érkezett.',icon:'/admin/pwa/icon-192.png',tag:'polgardi-admin-new'});if(!valid(e,g,id)){await clearNotifications();return}msg.textContent=d.count+' új bejelentés érkezett. A megtekintéshez kattintson a Frissítés gombra.'}else msg.textContent='Figyelés aktív. Utolsó sikeres ellenőrzés: '+new Date().toLocaleTimeString('hu-HU');cursor=d.latest}catch(err){if(err instanceof SessionEnded){stop('A munkamenet véget ért.');return}if(valid(e,g,id))msg.textContent='Az ellenőrzés vagy értesítés nem sikerült. Automatikusan újrapróbáljuk.'}finally{pending=false;schedule()}}
-async function permission(){if(Notification.permission==='default')return await Notification.requestPermission();return Notification.permission}
-async function startMonitoring(manual=false){if(!loggedIn()||starting||enabled||!supported)return;if(!manual&&(suspended||!automaticWanted()||Notification.permission!=='granted'))return;cancelAutoRetry();if(manual)suspended=false;starting=true;buttons();const g=generation,id=user.id,e=++epoch;let retry=false;try{const permissionState=manual?await permission():Notification.permission;if(permissionState!=='granted')throw Error('Az értesítések nincsenek engedélyezve. Ellenőrizze a böngésző webhelyengedélyeit.');reg=await registration;if(!reg)throw Error('Az értesítések itt nem támogatottak.');const d=await api('/api/admin-notifications');if(e!==epoch||g!==generation||!loggedIn()||user.id!==id)return;if(!manual&&(!automaticWanted()||suspended))return;cursor=d.latest;enabled=true;const stored=manual?remember('on'):true;msg.textContent='Figyelés aktív. Bejelentkezéskor automatikusan indul. A mostantól érkező bejelentésekről értesítünk.'+(stored?'':' A választást a böngésző nem tudta tartósan menteni.');schedule()}catch(err){if(!(err instanceof SessionEnded)&&e===epoch&&g===generation&&loggedIn()&&user.id===id){msg.textContent=err.message;retry=!manual}}finally{starting=false;buttons();if(retry&&loggedIn()&&!suspended&&automaticWanted()&&Notification.permission==='granted')autoRetry=setTimeout(maybeAutoStart,30000);else if(g!==generation&&loggedIn())queueMicrotask(maybeAutoStart)}}
-enable.onclick=()=>startMonitoring(true);
-disable.onclick=()=>{const stored=remember('off');suspended=true;stop('Az értesítésfigyelés kikapcsolva.'+(stored?' A választást megjegyeztük ehhez az adminhoz ebben a böngészőben.':' A választást nem sikerült tartósan menteni; új megnyitáskor ismét elindulhat.'))};
-
-test.onclick=async()=>{if(!loggedIn()||starting)return;starting=true;buttons();const g=generation,id=user.id;try{if(await permission()!=='granted')throw Error('Először engedélyezze az értesítéseket.');reg=await registration;await api('/api/me');if(g!==generation||!loggedIn()||user.id!==id)return;await reg.showNotification('Polgárdi Admin – teszt',{body:'Ez tesztértesítés, nem új bejelentés.',icon:'/admin/pwa/icon-192.png',tag:'polgardi-admin-test'});if(g!==generation||!loggedIn())await clearNotifications();else msg.textContent='Tesztértesítés elküldve. Ha nem látszik, ellenőrizze a rendszer értesítési beállításait és a Ne zavarjanak módot.'}catch(err){if(!(err instanceof SessionEnded))msg.textContent=err.message}finally{starting=false;buttons()}};
-new MutationObserver(()=>{if(!loggedIn()){suspended=false;stop('Kijelentkezve: az értesítésfigyelés nem aktív.')}else maybeAutoStart();buttons()}).observe(panel,{attributes:true,attributeFilter:['hidden']});
-for(const id of ['logout'])document.getElementById(id).addEventListener('click',()=>{suspended=true;stop('Az értesítésfigyelés leállítva.')});
-document.getElementById('pw').addEventListener('submit',()=>{suspended=true;stop('Az értesítésfigyelés leállítva.')});
-window.addEventListener('focus',()=>{if(enabled&&!pending){clearTimeout(timer);poll()}else maybeAutoStart()});
-window.addEventListener('storage',e=>{if(e.key===preferenceKey()){suspended=false;if(!automaticWanted())stop('Az értesítésfigyelést egy másik ablakban kikapcsolta.');else maybeAutoStart()}});
+const panel=document.getElementById('panel'),box=document.getElementById('admin-notification-controls'),msg=document.getElementById('admin-notification-status');
+const enable=document.getElementById('admin-notification-enable'),disable=document.getElementById('admin-notification-disable'),test=document.getElementById('admin-notification-test'),install=document.getElementById('admin-install');
+if(!panel||!box||!msg||!enable||!disable||!test)return;
+const supported=window.isSecureContext&&'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;
+let reg=null,key=null,busy=false,preparing=false,active=false,promptEvent=null,who=null;
+function loggedIn(){return typeof user!=='undefined'&&user&&!panel.hidden}
+function preference(){return 'polgardi-admin-push-v1:'+user.id}
+function wanted(){try{return localStorage.getItem(preference())!=='off'}catch{return true}}
+function remember(v){try{localStorage.setItem(preference(),v)}catch{}}
+function buttons(){box.hidden=!loggedIn();enable.disabled=!supported||!reg||!key||busy||active;disable.disabled=!supported||busy;test.disabled=!active||busy}
+function decode(v){const s=atob(v.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-v.length%4)%4));return Uint8Array.from(s,c=>c.charCodeAt(0))}
+function currentUser(id){return loggedIn()&&user.id===id}
+async function save(sub,id){if(!currentUser(id))throw Error('A bejelentkezés megváltozott.');await api('/api/push/subscribe',{subscription:sub.toJSON()});if(!currentUser(id))throw Error('A bejelentkezés megváltozott.');active=true}
+async function prepare(){
+ if(!loggedIn()||preparing||busy)return;
+ if(!supported){msg.textContent='iPhone-on a kezdőképernyőre telepített admint nyissa meg. A pushhoz iOS 16.4 vagy újabb szükséges.';buttons();return}
+ preparing=true;const id=user.id;who=id;
+ try{
+  reg=await navigator.serviceWorker.register('/admin/sw.js',{scope:'/admin/',updateViaCache:'none'});
+  if(!reg.active)await new Promise((resolve,reject)=>{const w=reg.installing||reg.waiting;if(!w)return reject(Error('Frissítse az alkalmazást.'));if(w.state==='activated')return resolve();w.addEventListener('statechange',()=>{if(w.state==='activated')resolve();else if(w.state==='redundant')reject(Error('Nem aktiválódott az értesítéskezelő.'))})});
+  const config=await api('/api/push/config');if(!currentUser(id))return;key=decode(config.publicKey);
+  const sub=await reg.pushManager.getSubscription();if(!currentUser(id))return;
+  if(sub&&wanted()&&Notification.permission==='granted'){
+   await save(sub,id);msg.textContent='Háttérértesítések bekapcsolva. Az appot nem kell nyitva tartania.';
+  }else{active=false;msg.textContent=Notification.permission==='denied'?'Az értesítés tiltva van. Engedélyezze az iPhone értesítési beállításaiban.':'Koppintson az Értesítések bekapcsolása gombra a háttérértesítésekhez.'}
+ }catch(e){if(currentUser(id))msg.textContent=e.message||'Az értesítések előkészítése nem sikerült.'}
+ finally{preparing=false;buttons()}
+}
+enable.onclick=()=>{
+ if(!loggedIn()||busy||!reg||!key)return;
+ const id=user.id;busy=true;buttons();
+ const subscribing=reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
+ (async()=>{try{const sub=await subscribing;await save(sub,id);remember('on');msg.textContent='Háttérértesítések bekapcsolva. Lezárt telefonon is fogadhat értesítést.'}catch(e){msg.textContent=e.message||'Nem sikerült engedélyezni az értesítéseket.'}finally{busy=false;buttons()}})();
+};
+disable.onclick=async()=>{
+ if(!loggedIn()||busy||!reg)return;busy=true;buttons();
+ try{const sub=await reg.pushManager.getSubscription();if(sub){await api('/api/push/unsubscribe',{endpoint:sub.endpoint});await sub.unsubscribe()}remember('off');active=false;msg.textContent='Ezen az eszközön az értesítések kikapcsolva.'}catch(e){msg.textContent=e.message}finally{busy=false;buttons()}
+};
+test.onclick=async()=>{
+ if(!loggedIn()||busy||!active)return;busy=true;buttons();
+ try{const sub=await reg.pushManager.getSubscription();if(!sub)throw Error('Kapcsolja be újra az értesítéseket.');await api('/api/push/test',{endpoint:sub.endpoint});msg.textContent='Szerveroldali teszt sorba állítva. Az értesítés külön érkezik; ez még nem kézbesítési visszaigazolás.'}catch(e){msg.textContent=e.message}finally{busy=false;buttons()}
+};
+new MutationObserver(()=>{if(!loggedIn()){active=false;key=null;who=null;msg.textContent='Kijelentkezve. A szerver kijelentkezéskor minden ehhez az adminhoz tartozó eszközfeliratkozást töröl.';buttons()}else prepare()}).observe(panel,{attributes:true,attributeFilter:['hidden']});
+window.addEventListener('focus',()=>{if(loggedIn())prepare()});
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();promptEvent=e;if(install)install.hidden=false});
+if(install)install.onclick=async()=>{if(!promptEvent)return;const p=promptEvent;promptEvent=null;install.hidden=true;await p.prompt();await p.userChoice};
+window.addEventListener('appinstalled',()=>{if(install)install.hidden=true});
 navigator.serviceWorker?.addEventListener('message',async e=>{
-if(e.data?.type!=='ADMIN_NOTIFICATION_CLICK'||!loggedIn())return;
-const pending=[...document.querySelectorAll('#reports .local')].some(p=>/Még nincs elmentve|Mentés folyamatban|mentés sikere nem igazolható/i.test(p.textContent));
-const filled=[...panel.querySelectorAll('input,textarea')].some(x=>x.value.trim()!=='');
-if((pending||filled)&&!window.confirm('Nem mentett módosítás, folyamatban lévő mentés vagy kitöltött adminűrlap lehet az oldalon. A frissítés felülírhatja ezeket. Frissíti a listát?')){msg.textContent='Az automatikus frissítést megszakította. Mentse a módosításokat, majd kattintson a Frissítés gombra.';return;}
-if(loading){msg.textContent='A lista betöltése már folyamatban van. Ha az új bejelentés nem jelenik meg, kattintson a Frissítés gombra.';return;}
-const button=document.getElementById('refresh');button.disabled=true;
-try{await load();if(loggedIn())msg.textContent='A bejelentéslista az értesítésre kattintás után frissült.';}
-catch(err){if(!(err instanceof SessionEnded))msg.textContent='A lista frissítése nem sikerült: '+(err.message||'Kapcsolati hiba.');}
-finally{button.disabled=false;}
+ if(e.data?.type!=='ADMIN_NOTIFICATION_CLICK'||!loggedIn())return;
+ const pending=[...document.querySelectorAll('#reports .local')].some(p=>/Még nincs elmentve|Mentés folyamatban|mentés sikere nem igazolható/i.test(p.textContent));
+ const filled=[...panel.querySelectorAll('input,textarea')].some(x=>x.value.trim()!=='');
+ if((pending||filled)&&!window.confirm('Nem mentett módosítás lehet az oldalon. Frissíti a listát?'))return;
+ if(typeof loading!=='undefined'&&loading)return;
+ const button=document.getElementById('refresh');if(button)button.disabled=true;
+ try{await load();msg.textContent='A bejelentéslista frissült.'}catch(e){msg.textContent=e.message}finally{if(button)button.disabled=false}
 });
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();promptEvent=e;install.hidden=false});
-install.onclick=async()=>{if(!promptEvent)return;const p=promptEvent;promptEvent=null;install.hidden=true;await p.prompt();await p.userChoice};window.addEventListener('appinstalled',()=>install.hidden=true);
-for(const p of box.querySelectorAll('p'))if(p!==msg&&p.textContent.includes('A figyeléshez tartsa nyitva'))p.textContent='A figyelés engedélyezett értesítéseknél bejelentkezés után automatikusan indul. A kézi kikapcsolást adminonként megjegyezzük ebben a böngészőben. Tartsa nyitva az alkalmazást; lekicsinyítve az ellenőrzés késhet.';
-if(!supported)msg.textContent='Ebben a böngészőben vagy környezetben az értesítés nem támogatott.';else msg.textContent='A figyelés bejelentkezés után automatikusan indul, ha az értesítések engedélyezve vannak.';
-buttons();maybeAutoStart();
+for(const p of box.querySelectorAll('p'))if(p!==msg&&(/Tartsa nyitva|tartsa nyitva|lekicsinyítve/.test(p.textContent)))p.textContent='A háttérértesítésekhez engedély szükséges. Az értesítés nem tartalmaz személyes adatot. Kijelentkezéskor az admin összes eszközfeliratkozása törlődik; a többi eszközön az admin újbóli megnyitása után regisztrálható újra.';
+buttons();prepare();
 })();
